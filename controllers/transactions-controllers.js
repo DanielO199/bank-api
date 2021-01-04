@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const User = require('../models/user');
 const Transaction = require('../models/transaction');
 const Pin = require('../models/authorizationKey');
-const Account = require('../models/account');
+const Bill = require('../models/bill');
 
 const getAllTransactionsByUserId = async (req, res, next) => {
 	const userId = req.params.uid;
@@ -91,11 +91,11 @@ const confirmTransactionWithPin = async (req, res) => {
 
 	let sender, receiver;
 	try {
-		sender = await Account.findOne({ accountNumber: senderAccountNumber });
+		sender = await Bill.findOne({ accountNumber: senderAccountNumber });
 	} catch (err) {}
 
 	try {
-		receiver = await Account.findOne({ accountNumber: receiverAccountNumber });
+		receiver = await Bill.findOne({ accountNumber: receiverAccountNumber });
 	} catch (err) {
 		return res.status(401).json({ message: 'Problem serwera' });
 	}

@@ -1,13 +1,13 @@
 const mongoose = require('mongoose');
 
 const User = require('../models/user');
-const Account = require('../models/account');
+const Bill = require('../models/bill');
 
 const getAllBillsByUserId = async (req, res) => {
 	const userId = req.params.uid;
 	let accounts;
 	try {
-		accounts = await Account.find({ user: userId });
+		accounts = await Bill.find({ user: userId });
 	} catch (err) {
 		res
 			.status(500)
@@ -35,7 +35,7 @@ const createNewBill = async (req, res) => {
 
 	let finalAccountNumber = `0000${accountNumber}${randomNumbers}`;
 
-	const createdAccount = new Account({
+	const createdAccount = new Bill({
 		accountNumber: finalAccountNumber,
 		name,
 		money: 1000,

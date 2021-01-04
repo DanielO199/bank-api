@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 
 const usersRoutes = require('./routes/user-routes');
 const transactionsRoutes = require('./routes/transaction-routes');
-const accountsRoutes = require('./routes/account-routes');
+const billsRoutes = require('./routes/bill-routes');
 
 const server = express();
 
@@ -24,7 +24,7 @@ server.use(function (req, res, next) {
 
 server.use('/api/users', usersRoutes);
 server.use('/api/transactions', transactionsRoutes);
-server.use('/api/accounts', accountsRoutes);
+server.use('/api/bills', billsRoutes);
 
 server.use(() => {
 	throw new Error('Wystąpił błąd');

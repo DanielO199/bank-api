@@ -1,119 +1,142 @@
 const { validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
+
 const Nexmo = require('nexmo');
 
 const User = require('../models/user');
 const AuthorizationKey = require('../models/authorizationKey');
-const UserActionHistory = require('../models/user-action-history');
+const hashPassword = require('../utils/hash-password');
+const USER_ROLE = require('../utils/constants');
+const generateRandomNumber = require('../utils/generate-number');
 
 const getUserDataById = async (req, res, next) => {
 	const userId = req.params.uid;
 
 	let user;
 	try {
-		user = await User.findById(userId);
+		user = await User.findById(userId, { password: 0 });
 	} catch (err) {
-		res.status(500).json({ message: 'Nie można wczytać danych' });
+		res.status(500).json({ message: 'Server Error' });
 	}
 
 	res.json({ user });
 };
 
-const loginUser = async (req, res, next) => {
-	const { login, password } = req.body;
+const createUser = async (req, res) => {
+	const errors = validationResult(req);
+	if (!errors.isEmpty()) {
+		return res.status(422).json({ message: 'Please check your data' });
+	}
+
+	const { firstName, lastName, email } = req.body;
 
 	let existingUser;
 	try {
-		existingUser = await User.findOne({ login });
+		existingUser = await User.findOne({ email: email });
 	} catch (err) {
-		res.status(500).json({ message: 'Logowanie nieudane' });
+		res.status(500).json({ message: 'Signin up failed' });
+	}
+
+	if (existingUser) {
+		return res.status(422).json({ message: 'Email is already used' });
+	}
+
+	const pinCode = await createPinCode();
+
+	const password = await hashPassword(req.body.password);
+
+	const createdUser = new User({
+		firstName,
+		lastName,
+		email,
+		role: USER_ROLE,
+		pinCode,
+		password,
+		bills: [],
+		transactions: []
+	});
+
+	try {
+		await createdUser.save();
+	} catch (err) {
+		return res.status(500).json({ message: 'Signing up failed' });
+	}
+
+	return res.status(201).json({ pinCode: createdUser.pinCode });
+};
+
+const createPinCode = async () => {
+	const pinCode = generateRandomNumber(1, 10e5 - 1);
+	const data = await User.find({ pinCode: pinCode });
+
+	try {
+		return data.length === 0 ? pinCode : createPinCode();
+	} catch (error) {
+		throw new Error(error);
+	}
+};
+
+const loginUser = async (req, res, next) => {
+	const { pinCode, password } = req.body;
+
+	let existingUser;
+	try {
+		existingUser = await User.findOne({ pinCode });
+	} catch (err) {
+		res.status(500).json({ message: 'Login failed' });
 	}
 
 	if (!existingUser) {
-		res.status(401).json({ message: 'Niepoprawne dane' });
-	}
-
-	if (existingUser.status === 'inactive') {
-		res.status(401).json({ message: 'Twoje konto jest nieaktywne' });
+		res.status(422).json({ message: 'Please check your data' });
 	}
 
 	let isValidPassword = await bcrypt.compare(password, existingUser.password);
 
 	if (!isValidPassword) {
-		res.status(401).json({ message: 'Niepoprawne dane' });
+		res.status(401).json({ message: 'Please check your data' });
 	}
 
-	if (existingUser && isValidPassword) {
-		// let pin = Math.floor(Math.random() * (9999 - 1000)) + 1000;
-		let pin = 1111;
+	let token = jwt.sign(
+		{ userId: existingUser.id, email: existingUser.email },
+		'SECRET_KEY',
+		{ expiresIn: '1h' }
+	);
 
-		const newPin = new Pin({
-			pin: pin,
-			user: existingUser._id,
-			attempt: 0
-		});
-
-		try {
-			await newPin.save();
-		} catch (err) {
-			res.status(500).json({ message: 'Logowanie nieudane' });
-		}
-
-		// const nexmo = new Nexmo({
-		// 	apiKey: 'd2356039',
-		// 	apiSecret: 'yKcNHdTHNXUmZx44'
-		// });
-
-		// const from = 'Vonage APIs';
-		// const to = '48534377118';
-		// const text = `${pin} - uwaga ważność pinu to 2 minuty, po upływie czasu należy zalogować się od nowa`;
-		// nexmo.message.sendSms(from, to, text);
-		console.log(newPin.pin);
-	}
-
-	res.json({
-		pin: pin
+	return res.json({
+		adminId: existingUser.id,
+		email: existingUser.email,
+		token
 	});
 };
 
 const updateUserData = async (req, res, next) => {
 	const userId = req.params.uid;
-	const { name, surname, address, email, phone } = req.body;
+	const { firstName, lastName, email, password } = req.body;
 
 	let updatedUser;
 	try {
 		updatedUser = await User.findById(userId);
 	} catch (err) {
-		res.status(500).json({ message: 'Spróbuj ponownie' });
+		res.status(500).json({ message: 'Server Error' });
 	}
 
-	updatedUser.name = name;
-	updatedUser.surname = surname;
-	updatedUser.address = address;
+	updatedUser.firstName = firstName;
+	updatedUser.lastName = lastName;
 	updatedUser.email = email;
-	updatedUser.phone = phone;
+	updatedUser.password = await hashPassword(password);
 
 	try {
 		await updatedUser.save();
 	} catch (err) {
-		res.status(500).json({ message: 'Spróbuj ponownie' });
+		res.status(500).json({ message: 'Server Error' });
 	}
 
-	const userActionHistoryLog = new UserActionHistory({
-		user: updatedUser,
-		action: 'Aktualizacja danych'
-	});
-
-	try {
-		await userActionHistoryLog.save();
-	} catch (error) {}
-
-	return res.status(200).json({
-		message: 'Dane został zaktualizowane'
+	return res.status(201).json({
+		message: 'Data has been updated'
 	});
 };
 
 exports.getUserDataById = getUserDataById;
 exports.loginUser = loginUser;
+exports.createUser = createUser;
 exports.updateUserData = updateUserData;
