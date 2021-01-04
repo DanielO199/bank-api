@@ -1,13 +1,13 @@
 const { validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 
-const Nexmo = require('nexmo');
-
+const Bill = require('../models/bill');
 const User = require('../models/user');
-const AuthorizationKey = require('../models/authorizationKey');
+const CONSTS = require('../utils/constants');
 const hashPassword = require('../utils/hash-password');
-const USER_ROLE = require('../utils/constants');
 const generateRandomNumber = require('../utils/generate-number');
+const _generateBillNumber = require('../utils/generate-billNumber');
 
 const getUserDataById = async (req, res, next) => {
 	const userId = req.params.uid;
@@ -41,36 +41,67 @@ const createUser = async (req, res) => {
 		return res.status(422).json({ message: 'Email is already used' });
 	}
 
-	const pinCode = await createPinCode();
+	const pinCode = await _createPinCode();
 
 	const password = await hashPassword(req.body.password);
+
+	const accountNumber = await _createBillNumber();
 
 	const createdUser = new User({
 		firstName,
 		lastName,
 		email,
-		role: USER_ROLE,
+		role: CONSTS.USER_ROLE,
 		pinCode,
 		password,
 		bills: [],
 		transactions: []
 	});
 
+	const createdBill = new Bill({
+		accountNumber,
+		name: CONSTS.BILL_TYPE,
+		money: 100,
+		user: createdUser.id
+	});
+
 	try {
 		await createdUser.save();
+		await createdBill.save();
 	} catch (err) {
 		return res.status(500).json({ message: 'Signing up failed' });
+	}
+
+	try {
+		const sess = await mongoose.startSession();
+		sess.startTransaction();
+		createdUser.bills.push(createdBill);
+		await createdUser.save({ session: sess });
+		await sess.commitTransaction();
+	} catch (err) {
+		return res.status(500).json({ message: 'Server Failed' });
 	}
 
 	return res.status(201).json({ pinCode: createdUser.pinCode });
 };
 
-const createPinCode = async () => {
+const _createBillNumber = async () => {
+	const accountNumber = _generateBillNumber(1, 10e5 - 1);
+	const data = await Bill.find({ accountNumber: accountNumber });
+
+	try {
+		return data.length === 0 ? accountNumber : _generateBillNumber();
+	} catch (error) {
+		throw new Error(error);
+	}
+};
+
+const _createPinCode = async () => {
 	const pinCode = generateRandomNumber(1, 10e5 - 1);
 	const data = await User.find({ pinCode: pinCode });
 
 	try {
-		return data.length === 0 ? pinCode : createPinCode();
+		return data.length === 0 ? pinCode : _createPinCode();
 	} catch (error) {
 		throw new Error(error);
 	}
