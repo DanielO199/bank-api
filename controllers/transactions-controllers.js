@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 
 const User = require('../models/user');
 const Transaction = require('../models/transaction');
-const Pin = require('../models/authorizationKey');
+const AuthorizationKey = require('../models/authorizationKey');
 const Bill = require('../models/bill');
 
 const getAllTransactionsByUserId = async (req, res, next) => {
@@ -23,227 +23,145 @@ const getAllTransactionsByUserId = async (req, res, next) => {
 };
 
 const createTransaction = async (req, res, next) => {
-	const errors = validationResult(req);
-	if (!errors.isEmpty()) {
-		res.status(422).json({ message: 'Niepoprawna kwota przelewu' });
-	}
-
 	const { receiverAccountNumber, senderAccountNumber } = req.body;
 
-	let sender, receiver;
+	let senderBill, receiverBill;
 	try {
-		sender = await Account.findOne({ accountNumber: senderAccountNumber });
-	} catch (err) {}
-
-	try {
-		receiver = await Account.findOne({ accountNumber: receiverAccountNumber });
+		senderBill = await Bill.findOne({ accountNumber: senderAccountNumber });
 	} catch (err) {
-		return res.status(401).json({ message: 'Problem serwera' });
+		return res.status(401).json({ message: 'Server Failed' });
 	}
 
-	if (sender.money < req.body.money)
+	try {
+		receiverBill = await Bill.findOne({ accountNumber: receiverAccountNumber });
+	} catch (err) {
+		return res.status(401).json({ message: 'Server Failed' });
+	}
+
+	if (senderBill.money < req.body.money)
+		return res.status(401).json({ message: 'You do not have engough money' });
+
+	if (!receiverBill)
+		return res.status(401).json({ message: 'Receiver bill number not found' });
+
+	if (senderBill.accountNumber === receiverBill.accountNumber)
 		return res
 			.status(401)
-			.json({ message: 'Nie masz wystarczających środków' });
+			.json({ message: 'Can not send money to this bill number' });
 
-	if (receiver) {
-		if (sender.accountNumber === receiver.accountNumber) {
-			return res
-				.status(401)
-				.json({ message: 'Nie można wykonać przelewu do samego siebie' });
-		}
-	}
-
-	if (req.body.money <= 0) {
-		return res.status(401).json({ message: 'Prosze podac wlasciowa kwote' });
-	}
+	if (req.body.money <= 0)
+		return res.status(422).json({ message: 'Incorrect money amount' });
 
 	// let pin = Math.floor(Math.random() * (9999 - 1000)) + 1000;
-	let pin = 1111;
+	let keyValue = `123adf`;
 
-	const newPin = new Pin({
-		pin: pin,
-		user: sender._id
+	const newKey = new AuthorizationKey({
+		value: keyValue,
+		bill: senderBill._id
 	});
 
 	try {
-		await newPin.save();
+		await newKey.save();
 	} catch (err) {
-		res.status(500).json({ message: 'Logowanie nieudane' });
+		res.status(500).json({ message: 'Server Failed' });
 	}
 
-	return res.json({ pin });
+	return res.json({
+		newKey,
+		message: 'Please check your email to receive authorization key'
+	});
 };
 
-const confirmTransactionWithPin = async (req, res) => {
-	const errors = validationResult(req);
-	if (!errors.isEmpty()) {
-		return res.status(422).json({ message: 'Niepoprawna kwota przelewu' });
-	}
-
+const confirmTransaction = async (req, res) => {
 	const {
 		title,
-		receiverName,
 		receiverAccountNumber,
-		userId,
-		senderAccountNumber
+		senderAccountNumber,
+		authorizationKey
 	} = req.body;
+
+	let senderBill, receiverBill;
+	try {
+		senderBill = await Bill.findOne({ accountNumber: senderAccountNumber });
+		receiverBill = await Bill.findOne({ accountNumber: receiverAccountNumber });
+	} catch (err) {
+		return res.status(401).json({ message: 'Server Failed' });
+	}
+
+	let existingKey;
+	try {
+		existingKey = await AuthorizationKey.findOne({
+			bill: senderBill._id
+		});
+	} catch (err) {
+		return res.status(500).json({ message: 'Server Failed' });
+	}
+
+	if (authorizationKey !== existingKey.value)
+		return res.status(422).json({ message: 'Invalid authorization key' });
+
+	try {
+		await Bill.findOneAndUpdate(
+			{ accountNumber: senderBill.accountNumber },
+			{ $inc: { money: -req.body.money } }
+		);
+
+		await Bill.findOneAndUpdate(
+			{ accountNumber: receiverAccountNumber },
+			{ $inc: { money: req.body.money } }
+		);
+	} catch (err) {
+		return res.status(500).json({ message: 'Server Failed' });
+	}
 
 	let sender, receiver;
 	try {
-		sender = await Bill.findOne({ accountNumber: senderAccountNumber });
-	} catch (err) {}
+		sender = await User.findById(senderBill.user);
+		receiver = await User.findById(receiverBill.user);
+	} catch (e) {
+		return res.status(500).json({ message: 'Server Failed' });
+	}
+
+	const senderName = `${sender.firstName} ${sender.lastName}`;
+	const receiverName = `${receiver.firstName} ${receiver.lastName}`;
+
+	const newTransaction = new Transaction({
+		title,
+		money: req.body.money,
+		senderName,
+		receiverName,
+		senderAccountNumber: senderBill.accountNumber,
+		receiverAccountNumber,
+		sender: sender._id,
+		receiver: receiver._id
+	});
 
 	try {
-		receiver = await Bill.findOne({ accountNumber: receiverAccountNumber });
-	} catch (err) {
-		return res.status(401).json({ message: 'Problem serwera' });
+		await newTransaction.save();
+	} catch (error) {
+		return res.status(500).json({ message: 'Server Failed' });
 	}
 
-	let existingPin;
 	try {
-		existingPin = await Pin.findOne({ user: sender._id });
+		const sess = await mongoose.startSession();
+		sess.startTransaction();
+
+		sender.transactions.push(newTransaction);
+		await sender.save({ session: sess });
+		receiver.transactions.push(newTransaction);
+		await receiver.save({ session: sess });
+		await sess.commitTransaction();
 	} catch (err) {
-		res.status(500).json({ message: 'Spróbuj ponownie' });
+		return res.status(500).json({ message: 'Transakcja nie została zapisana' });
 	}
-
-	if (req.body.pin === existingPin.pin) {
-		if (!receiver) {
-			let finalSender;
-			try {
-				finalSender = await User.findById(sender.user);
-			} catch (e) {
-				return res
-					.status(500)
-					.json({ message: 'Transakcja nie została zapisana' });
-			}
-
-			senderName = `${finalSender.name} ${finalSender.surname}`;
-
-			if (sender.money < req.body.money)
-				return res
-					.status(401)
-					.json({ message: 'Nie masz wystarczających środków' });
-
-			const newTransaction = new Transaction({
-				title,
-				money: req.body.money,
-				senderName,
-				receiverName,
-				senderAccountNumber: sender.accountNumber,
-				receiverAccountNumber,
-				exists: false,
-				creator: userId
-			});
-
-			try {
-				const sess = await mongoose.startSession();
-				sess.startTransaction();
-				await newTransaction.save({ session: sess });
-				finalSender.transactions.push(newTransaction);
-				await finalSender.save({ session: sess });
-				await sess.commitTransaction();
-			} catch (err) {
-				return res
-					.status(500)
-					.json({ message: 'Transakcja nie została zapisana' });
-			}
-
-			return res
-				.status(200)
-				.json({ message: 'Przelew został dodany do oczekujących' });
-		}
-
-		if (sender.money < req.body.money)
-			return res
-				.status(401)
-				.json({ message: 'Nie masz wystarczających środków' });
-
-		if (sender.accountNumber === receiver.accountNumber) {
-			return res
-				.status(401)
-				.json({ message: 'Nie można wykonać przelewu do samego siebie' });
-		}
-
-		if (req.body.money <= 0) {
-			return res.status(401).json({ message: 'Prosze podac wlasciowa kwote' });
-		}
-
-		try {
-			await Account.findOneAndUpdate(
-				{ accountNumber: sender.accountNumber },
-				{ $inc: { money: -req.body.money } }
-			);
-
-			await Account.findOneAndUpdate(
-				{ accountNumber: receiverAccountNumber },
-				{ $inc: { money: req.body.money } }
-			);
-		} catch (err) {
-			return res
-				.status(401)
-				.json({ message: 'Nie znaleziono uzytkownika o podanym numerze' });
-		}
-
-		let finalSender;
-		try {
-			finalSender = await User.findById(sender.user);
-		} catch (e) {
-			return res
-				.status(500)
-				.json({ message: 'Transakcja nie została zapisana' });
-		}
-
-		senderName = `${finalSender.name} ${finalSender.surname}`;
-
-		let finalReceiver;
-		try {
-			finalReceiver = await User.findById(receiver.user);
-		} catch (e) {
-			return res
-				.status(500)
-				.json({ message: 'Transakcja nie została zapisana' });
-		}
-
-		const newTransaction = new Transaction({
-			title,
-			money: req.body.money,
-			senderMoneyBeforeTransfer: sender.money,
-			receiverMoneyBeforeTransfer: receiver.money,
-			senderName,
-			receiverName,
-			senderAccountNumber: sender.accountNumber,
-			receiverAccountNumber,
-			creator: userId,
-			receiver: finalReceiver._id
-		});
-
-		try {
-			const sess = await mongoose.startSession();
-			sess.startTransaction();
-			await newTransaction.save({ session: sess });
-			finalSender.transactions.push(newTransaction);
-			await finalSender.save({ session: sess });
-			finalReceiver.transactions.push(newTransaction);
-			await finalReceiver.save({ session: sess });
-			await sess.commitTransaction();
-		} catch (err) {
-			return res
-				.status(500)
-				.json({ message: 'Transakcja nie została zapisana' });
-		}
-		try {
-			await Pin.deleteMany({ user: sender._id });
-		} catch (e) {
-			print(e);
-		}
-
-		res.status(200).json({ message: 'Przelew został wykonany' });
-	} else {
-		return res.status(500).json({ message: 'Niepoprawny pin' });
+	try {
+		await AuthorizationKey.deleteMany({ bill: senderBill._id });
+	} catch (e) {
+		print(e);
 	}
+	res.status(200).json({ message: 'Transaction has been created' });
 };
 
 exports.createTransaction = createTransaction;
 exports.getAllTransactionsByUserId = getAllTransactionsByUserId;
-exports.confirmTransactionWithPin = confirmTransactionWithPin;
+exports.confirmTransaction = confirmTransaction;

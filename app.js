@@ -27,7 +27,7 @@ server.use('/api/transactions', transactionsRoutes);
 server.use('/api/bills', billsRoutes);
 
 server.use(() => {
-	throw new Error('Wystąpił błąd');
+	throw new Error('Invalid route');
 });
 
 mongoose

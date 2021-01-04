@@ -7,6 +7,14 @@ const transactionSchema = new Schema({
 	title: { type: String, required: true },
 	money: { type: Number, required: true },
 	//RELATIONS
+	senderName: {
+		type: String,
+		required: true
+	},
+	receiverName: {
+		type: String,
+		required: true
+	},
 	senderAccountNumber: {
 		type: String,
 		required: true
