@@ -19,6 +19,23 @@ const getAllBillsByUserId = async (req, res) => {
 	});
 };
 
+const getAllUserFunds = async (req, res) => {
+	const userId = req.params.uid;
+
+	let bills;
+	try {
+		bills = await Bill.find({ user: userId });
+	} catch (err) {
+		return res.status(500).json({ message: 'Server Failed' });
+	}
+
+	let funds = bills.reduce((acc, item) => acc + item.money, 0);
+
+	return res.status(200).json({
+		funds
+	});
+};
+
 const createNewBill = async (req, res) => {
 	const { creatorId } = req.body;
 
@@ -69,4 +86,5 @@ const _createBillNumber = async () => {
 };
 
 exports.getAllBillsByUserId = getAllBillsByUserId;
+exports.getAllUserFunds = getAllUserFunds;
 exports.createNewBill = createNewBill;
