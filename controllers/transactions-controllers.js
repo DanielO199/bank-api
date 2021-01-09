@@ -1,4 +1,3 @@
-const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
 
 const User = require('../models/user');
@@ -8,17 +7,31 @@ const Bill = require('../models/bill');
 
 const getAllTransactionsByUserId = async (req, res, next) => {
 	const userId = req.params.uid;
+	const page = parseInt(req.query.current);
+	const limit = parseInt(req.query.pageSize);
 
-	let transactions;
+	const startIndex = (page - 1) * limit;
+
+	let total = await Transaction.countDocuments().exec();
+
+	const results = {
+		pagination: {
+			current: page,
+			pageSize: limit,
+			total
+		}
+	};
+
 	try {
-		transactions = await Transaction.find({
+		results.transactions = await Transaction.find({
 			$or: [{ sender: userId }, { receiver: userId }]
-		});
+		})
+			.limit(limit)
+			.skip(startIndex)
+			.exec();
 	} catch (err) {}
 	return res.status(200).json({
-		transactions: transactions.map((transaction) =>
-			transaction.toObject({ getters: true })
-		)
+		results
 	});
 };
 
