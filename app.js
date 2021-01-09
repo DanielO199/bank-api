@@ -1,5 +1,4 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 
 const usersRoutes = require('./routes/user-routes');
@@ -8,17 +7,15 @@ const billsRoutes = require('./routes/bill-routes');
 
 const server = express();
 
-server.use(bodyParser.json());
+server.use(express.json());
 
 server.use(function (req, res, next) {
-	res.header('Access-Control-Allow-Origin', '*');
-
-	res.header(
+	res.setHeader('Access-Control-Allow-Origin', '*');
+	res.setHeader(
 		'Access-Control-Allow-Headers',
 		'Origin, X-Requested-With, Content-Type, Accept, Authorization'
 	);
-	res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE');
-
+	res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE');
 	next();
 });
 

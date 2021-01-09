@@ -6,6 +6,18 @@ const Transaction = require('../models/transaction');
 const CONSTS = require('../utils/constants');
 const _generateBillNumber = require('../utils/generate-billNumber');
 
+const getAllBills = async (req, res) => {
+	let bills;
+	try {
+		bills = await Bill.find();
+	} catch (err) {
+		return res.status(500).json({ message: 'Server Failed' });
+	}
+	return res.status(200).json({
+		bills: bills.map((bill) => bill.toObject({ getters: true }))
+	});
+};
+
 const getAllBillsByUserId = async (req, res) => {
 	const userId = req.params.uid;
 
@@ -74,14 +86,16 @@ const getUserSavings = async (req, res) => {
 };
 
 const createNewBill = async (req, res) => {
-	const { creatorId } = req.body;
-
+	const { creatorId = '5ff38276fd149e22c08c6f27' } = req.body;
+	console.log(creatorId);
 	let user;
 	try {
 		user = await User.findById(creatorId);
 	} catch (err) {
 		return res.status(500).json({ message: 'Server Failed' });
 	}
+
+	if (!user) return res.status(404).json({ message: 'User does not exist' });
 
 	const accountNumber = await _createBillNumber();
 
@@ -108,7 +122,7 @@ const createNewBill = async (req, res) => {
 		return res.status(500).json({ message: 'Server Failed' });
 	}
 
-	return res.status(200).json({ message: 'Bill was created' });
+	return res.json({ message: 'Bill was created', bill: createdBill });
 };
 
 const _createBillNumber = async () => {
@@ -122,6 +136,7 @@ const _createBillNumber = async () => {
 	}
 };
 
+exports.getAllBills = getAllBills;
 exports.getAllBillsByUserId = getAllBillsByUserId;
 exports.getAllUserFunds = getAllUserFunds;
 exports.getUserSavings = getUserSavings;

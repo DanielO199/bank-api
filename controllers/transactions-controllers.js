@@ -12,10 +12,10 @@ const getAllTransactionsByUserId = async (req, res, next) => {
 	let transactions;
 	try {
 		transactions = await Transaction.find({
-			$or: [{ creator: userId }, { receiver: userId }]
+			$or: [{ sender: userId }, { receiver: userId }]
 		});
 	} catch (err) {}
-	res.status(200).json({
+	return res.status(200).json({
 		transactions: transactions.map((transaction) =>
 			transaction.toObject({ getters: true })
 		)
