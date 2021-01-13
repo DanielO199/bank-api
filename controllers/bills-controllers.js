@@ -4,6 +4,7 @@ const User = require('../models/user');
 const Bill = require('../models/bill');
 const Transaction = require('../models/transaction');
 const CONSTS = require('../utils/constants');
+
 const _generateBillNumber = require('../utils/generate-billNumber');
 
 const getAllBills = async (req, res) => {
@@ -42,9 +43,22 @@ const getAllUserFunds = async (req, res) => {
 		return res.status(500).json({ message: 'Server Failed' });
 	}
 
+	let user;
+	try {
+		user = await User.find({ user: userId });
+	} catch (err) {
+		return res.status(500).json({ message: 'Server Failed' });
+	}
+
 	let funds = bills.reduce((acc, item) => acc + item.money, 0);
 
+	const fundsData = [
+		{ date: user.createdAt, money: 100 },
+		{ date: new Date(), money: funds }
+	];
+
 	return res.status(200).json({
+		fundsData,
 		funds
 	});
 };
@@ -75,13 +89,17 @@ const getUserSavings = async (req, res) => {
 		0
 	);
 
+	let sum = moneyFromOutgoingTransfers + moneyFromIncomingTransfers;
+	let percentage = (moneyFromIncomingTransfers / sum) * 100;
+
 	const savingsData = [
 		{ name: 'outgoing', money: moneyFromOutgoingTransfers },
 		{ name: 'incoming', money: moneyFromIncomingTransfers }
 	];
 
 	return res.status(200).json({
-		savingsData
+		savingsData,
+		percentage
 	});
 };
 
@@ -102,7 +120,7 @@ const createNewBill = async (req, res) => {
 	const createdBill = new Bill({
 		accountNumber,
 		name: CONSTS.BILL_TYPE,
-		money: 100,
+		money: 0,
 		user: creatorId
 	});
 

@@ -1,10 +1,13 @@
 const { validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 
 const Bill = require('../models/bill');
+const Transaction = require('../models/transaction');
 const User = require('../models/user');
 const CONSTS = require('../utils/constants');
+
 const hashPassword = require('../utils/hash-password');
 const generateRandomNumber = require('../utils/generate-number');
 const _generateBillNumber = require('../utils/generate-billNumber');
@@ -65,9 +68,21 @@ const createUser = async (req, res) => {
 		user: createdUser.id
 	});
 
+	const createdTransaction = new Transaction({
+		title: 'Create account',
+		money: 100,
+		senderName: 'Daniel Ochab',
+		receiverName: `${firstName} ${lastName}`,
+		senderAccountNumber: '749982372102723245806258',
+		receiverAccountNumber: accountNumber,
+		sender: '5ffed386b98b9f17e499d8b5',
+		receiver: createdUser._id
+	});
+
 	try {
 		await createdUser.save();
 		await createdBill.save();
+		await createdTransaction.save();
 	} catch (err) {
 		return res.status(500).json({ message: 'Signing up failed' });
 	}
@@ -76,6 +91,7 @@ const createUser = async (req, res) => {
 		const sess = await mongoose.startSession();
 		sess.startTransaction();
 		createdUser.bills.push(createdBill);
+		createdUser.transactions.push(createdTransaction);
 		await createdUser.save({ session: sess });
 		await sess.commitTransaction();
 	} catch (err) {
@@ -108,17 +124,17 @@ const _createPinCode = async () => {
 };
 
 const loginUser = async (req, res, next) => {
-	const { pinCode, password } = req.body;
+	const { pin, password } = req.body;
 
 	let existingUser;
 	try {
-		existingUser = await User.findOne({ pinCode });
+		existingUser = await User.findOne({ pinCode: pin });
 	} catch (err) {
 		res.status(500).json({ message: 'Login failed' });
 	}
 
 	if (!existingUser) {
-		res.status(422).json({ message: 'Please check your data' });
+		return res.status(422).json({ message: 'Please check your data' });
 	}
 
 	let isValidPassword = await bcrypt.compare(password, existingUser.password);
@@ -133,10 +149,13 @@ const loginUser = async (req, res, next) => {
 		{ expiresIn: '1h' }
 	);
 
+	const user = {
+		token,
+		userId: existingUser._id
+	};
+
 	return res.json({
-		adminId: existingUser.id,
-		email: existingUser.email,
-		token
+		user
 	});
 };
 
