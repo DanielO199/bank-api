@@ -104,8 +104,8 @@ const getUserSavings = async (req, res) => {
 };
 
 const createNewBill = async (req, res) => {
-	const { creatorId = '5ff38276fd149e22c08c6f27' } = req.body;
-	console.log(creatorId);
+	const { creatorId } = req.body;
+
 	let user;
 	try {
 		user = await User.findById(creatorId);

@@ -19,10 +19,10 @@ const getUserDataById = async (req, res, next) => {
 	try {
 		user = await User.findById(userId, { password: 0 });
 	} catch (err) {
-		res.status(500).json({ message: 'Server Error' });
+		return res.status(500).json({ message: 'Server Error' });
 	}
 
-	res.json({ user });
+	return res.json({ user });
 };
 
 const createUser = async (req, res) => {
