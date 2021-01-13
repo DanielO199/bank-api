@@ -149,13 +149,9 @@ const loginUser = async (req, res, next) => {
 		{ expiresIn: '1h' }
 	);
 
-	const user = {
+	return res.json({
 		token,
 		userId: existingUser._id
-	};
-
-	return res.json({
-		user
 	});
 };
 

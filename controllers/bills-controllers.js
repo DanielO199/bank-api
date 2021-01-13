@@ -90,7 +90,7 @@ const getUserSavings = async (req, res) => {
 	);
 
 	let sum = moneyFromOutgoingTransfers + moneyFromIncomingTransfers;
-	let percentage = (moneyFromIncomingTransfers / sum) * 100;
+	let savings = (moneyFromIncomingTransfers / sum) * 100;
 
 	const savingsData = [
 		{ name: 'outgoing', money: moneyFromOutgoingTransfers },
@@ -99,7 +99,7 @@ const getUserSavings = async (req, res) => {
 
 	return res.status(200).json({
 		savingsData,
-		percentage
+		savings
 	});
 };
 
