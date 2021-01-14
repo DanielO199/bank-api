@@ -65,8 +65,7 @@ const createTransaction = async (req, res, next) => {
 	if (req.body.money <= 0)
 		return res.status(422).json({ message: 'Incorrect money amount' });
 
-	// let pin = Math.floor(Math.random() * (9999 - 1000)) + 1000;
-	let keyValue = `123adf`;
+	let keyValue = Math.random().toString(36).substring(7);
 
 	const newKey = new AuthorizationKey({
 		value: keyValue,
