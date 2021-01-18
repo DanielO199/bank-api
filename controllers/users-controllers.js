@@ -35,7 +35,7 @@ const createUser = async (req, res) => {
 
 	let existingUser;
 	try {
-		existingUser = await User.findOne({ email: email });
+		existingUser = await User.findOne({ email });
 	} catch (err) {
 		res.status(500).json({ message: 'Signin up failed' });
 	}

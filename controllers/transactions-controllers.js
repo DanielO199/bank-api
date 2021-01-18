@@ -12,7 +12,9 @@ const getAllTransactionsByUserId = async (req, res, next) => {
 
 	const startIndex = (page - 1) * limit;
 
-	let total = await Transaction.countDocuments().exec();
+	let total = await Transaction.countDocuments({
+		$or: [{ sender: userId }, { receiver: userId }]
+	}).exec();
 
 	const results = {
 		pagination: {
